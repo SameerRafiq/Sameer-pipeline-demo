@@ -1,5 +1,9 @@
 pipeline {
     agent any
+    environment {
+        DOCKER_IMAGE = "sameer272004/sameer-demo"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
     stages {
         stage('Checkout') {
             steps {
@@ -17,10 +21,35 @@ pipeline {
                 echo 'Tests passed!'
             }
         }
+        stage('Docker Build') {
+            steps {
+                sh 'docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} .'
+                sh 'docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest'
+            }
+        }
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'sameer-demo',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
+                    sh 'docker push ${DOCKER_IMAGE}:${IMAGE_TAG}'
+                    sh 'docker push ${DOCKER_IMAGE}:latest'
+                }
+            }
+        }
         stage('Deploy') {
             steps {
-                sh 'docker build -t sameer-demo .'
-                echo 'Deployed!'
+                sh 'docker stop jenkins-demo || true'
+                sh 'docker rm jenkins-demo || true'
+                sh 'docker pull ${DOCKER_IMAGE}:latest'
+                sh '''docker run -d \
+                    -p 3000:3000 \
+                    --name jenkins-demo \
+                    ${DOCKER_IMAGE}:latest'''
+                echo 'App deployed at port 3000!'
             }
         }
     }
@@ -33,3 +62,4 @@ pipeline {
         }
     }
 }
+
